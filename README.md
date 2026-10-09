@@ -121,7 +121,7 @@ A business that offers automated systems to clients can deploy the issuer templa
 
 ## Benchmark reports
 
-The following reports were produced on the Quantova test network `Q-test-net-1` on 9 October 2026 with Qstamp SDK release 0.1.3 and qcore 0.4.2. Every figure was measured on the live network. Test network receipts carry no evidential weight and the figures are given so that institutions can assess the design before an independent audit.
+The following reports were produced on the Quantova test network `Q-test-net-1` with Qstamp SDK release 0.1.3 and qcore 0.4.2. Every figure was measured on the live network. Test network receipts carry no evidential weight and the figures are given so that institutions can assess the design before an independent audit.
 
 ### Report 1. Batch stamping through the open contract
 
