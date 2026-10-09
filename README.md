@@ -22,7 +22,7 @@ Every transaction on the Quantova chain is signed with the Module Lattice Digita
 
 The chain admits only contract code signed by its attested compiler. A deployed template therefore cannot be replaced by altered code at the same address, and a reviewer can confirm that a deployment matches the reviewed source by compiling the source and comparing the resulting container.
 
-Signed orders carry a nonce held by the contract, so an order that has been used once cannot be submitted again. Every order and every approval also carries a deadline in seconds since 1970, and the contract refuses it once the block time has passed that deadline.
+Signed orders carry a nonce held by the contract, so an order that has been used once cannot be submitted again. Every order and every approval also carries a deadline in seconds since 1970, and the contract refuses it once the block time has passed that deadline. Every order and every approval also carries the domain value of the deployment, a random number fixed when the contract is deployed, and the contract refuses any order whose domain differs from its own, so an order made for one deployment cannot be used on another.
 
 ## How the Qstamp SDK works with these contracts
 
@@ -30,7 +30,7 @@ The Qstamp SDK computes a fingerprint of each record, combines each fingerprint 
 
 1. With the open template, the SDK performs every step. Install it with `npm install @quantovainc/qstamp` and call `stamp` and `verify`, or use the `qstamp` command line tool.
 
-2. With the issuer template, the institution computes the commitment with the SDK and submits it from the issuer account as an order signed by the issuer through `@quantovainc/qcore`. The order carries the commitment twice, once as 32 bytes under which the contract records it and once as the two halves that appear in the recorded event, and both must be taken from the same commitment. The fields must be listed in the order shown, which is the order in which the contract verifies the signature. The receipt is then verified with the SDK by naming the institution's contract and setting `trustCustomContract` to true. The following sequence follows the layout of the current template. The earlier layout was exercised on the Quantova test network.
+2. With the issuer template, the institution computes the commitment with the SDK and submits it from the issuer account as an order signed by the issuer through `@quantovainc/qcore`. The order carries the commitment twice, once as 32 bytes under which the contract records it and once as the two halves that appear in the recorded event, and both must be taken from the same commitment. The order also carries the domain value supplied when the contract was deployed, written as a decimal number. The fields must be listed in the order shown, which is the order in which the contract verifies the signature. The receipt is then verified with the SDK by naming the institution's contract and setting `trustCustomContract` to true. The following sequence follows the layout of the current template. The earlier layout was exercised on the Quantova test network.
 
 ```js
 const qstamp = require('@quantovainc/qstamp');
@@ -43,16 +43,18 @@ const issuer = core.address(seed, issuerIndex);
 const kind = String(qstamp.KINDS.public_record);
 const anchored = qstamp.commitment(batch.root, 1, { genesis: net.genesis, contract, sender: issuer, kind });
 const deadline = String(Math.floor(Date.now() / 1000) + 600);
+const domain = String(deploymentDomain);
 
 const half = (b) => ((BigInt('0x' + b.subarray(8, 16).toString('hex')) << 64n) | BigInt('0x' + b.subarray(0, 8).toString('hex'))).toString();
 await client.callSignedOrder(seed, issuerIndex, contract, '1effe529', {
-  schemeOff: 152, ptrOff: 160, regionOff: 216,
+  schemeOff: 152, ptrOff: 160, regionOff: 224,
   fields: [
     { offset: 120, width: 32, value: anchored.toString('hex') },
-    { offset: 168, width: 8, value: deadline },
-    { offset: 176, width: 16, value: half(anchored.subarray(0, 16)) },
-    { offset: 192, width: 16, value: half(anchored.subarray(16, 32)) },
-    { offset: 208, width: 8, value: kind },
+    { offset: 168, width: 8, value: domain },
+    { offset: 176, width: 8, value: deadline },
+    { offset: 184, width: 16, value: half(anchored.subarray(0, 16)) },
+    { offset: 200, width: 16, value: half(anchored.subarray(16, 32)) },
+    { offset: 216, width: 8, value: kind },
   ],
 }, seed, issuerIndex, 2000000, '1000000');
 
@@ -61,7 +63,7 @@ const result = await qstamp.verify(receipt, { bytes: record, contract, trustCust
 
 The receipt is assembled from the batch, the transaction identifier, the block height, the block identifier and the block time, in the format described in the Qstamp SDK documentation. The contract accepts the order only in a transaction sent by the issuer, so the signer of the transaction and the issuer recorded by the contract are always the same account, as SDK verification requires.
 
-A withdrawal is submitted in the same way with selector `5add7204`, scheme offset 152, pointer offset 160 and region offset 184. Its fields are the commitment at offset 120 with width 32, the deadline at offset 168 and the reason at offset 176, in that order. The reason code must not be zero, and only a commitment that the contract anchored earlier and has not yet withdrawn can be withdrawn.
+A withdrawal is submitted in the same way with selector `5add7204`, scheme offset 152, pointer offset 160 and region offset 192. Its fields are the commitment at offset 120 with width 32, the domain at offset 168, the deadline at offset 176 and the reason at offset 184, in that order. The reason code must not be zero, and only a commitment that the contract anchored earlier and has not yet withdrawn can be withdrawn.
 
 A stamp uses about 1.7 million units of meter and a withdrawal about 1.9 million, because each records the commitment in contract state. A meter limit of 2000000 for a stamp and 2200000 for a withdrawal leaves a margin, and a maximum fee of 1000000 Quon covers both at the current test network rate.
 
@@ -73,7 +75,7 @@ A stamp uses about 1.7 million units of meter and a withdrawal about 1.9 million
 
 2. Have the container signed by the Quantova attested compiler, which the web IDE does on compilation. The chain refuses any container without that signature.
 
-3. Deploy the signed container from the account that should become the owner, using the Quantova command line tool or the web IDE with the QMask wallet. For the issuer template, supply the address of the first issuer as a deployment parameter. A separate issuer key is recommended, so that the owner key can be kept offline. For the council template, supply the five official addresses as deployment parameters. The council becomes active when all five officials confirm the set, no earlier than 24 hours and no later than eight days after deployment. A council that is not confirmed within that period must be deployed again.
+3. Deploy the signed container from the account that should become the owner, using the Quantova command line tool or the web IDE with the QMask wallet. For the issuer template, supply the address of the first issuer and a domain value as deployment parameters. A separate issuer key is recommended, so that the owner key can be kept offline. For the council template, supply the five official addresses and a domain value as deployment parameters. The domain value must be a fresh random 64 bit number other than zero for every deployment. A contract address depends only on the deploying account and its count of transactions, so after a relaunch of the network or on a fork a new deployment can receive the address of an earlier one, and only a fresh domain value ensures that orders and approvals signed for the earlier deployment are refused by the new one. Deploying the issuer template uses about 3.2 million units of meter and deploying the council template about 9.3 million. The council becomes active when all five officials confirm the set, no earlier than 24 hours and no later than eight days after deployment. A council that is not confirmed within that period must be deployed again.
 
 4. Record the contract address, publish it to the parties who will verify receipts, and keep it under change control.
 

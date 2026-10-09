@@ -5,17 +5,21 @@ contract QStampCouncil {
     proposed: GuardianSet<5>;
     rotation_armed: u64;
     epoch: u64;
+    domain: u64;
   }
   // Proposes the five official signing keys given at deployment, which take effect once all five confirm them.
   genesis {
     proposed = deploy_params.officials;
+    domain = deploy_params.domain;
+    guard domain != 0;
     rotation_armed = now;
   }
   // Records a commitment only when at least three of the five officials have approved it.
   entry stamp(order: StampOrder, approvals: Quorum<3 of 5, officials>)
-    reads(epoch)
+    reads(epoch, domain)
     denies epoch == 0
   {
+    guard order.domain == domain;
     guard caller == order.relayer;
     guard now <= order.deadline;
     emit Stamped(order.relayer, order.hi, order.lo, order.kind);
@@ -23,10 +27,11 @@ contract QStampCouncil {
   }
   // Starts the waiting period that must pass before the set of officials can be replaced.
   entry arm_rotation(new_officials: GuardianSet<5>, order: ArmOrder, approvals: Quorum<4 of 5, officials>)
-    reads(epoch)
+    reads(epoch, domain)
     writes(proposed, rotation_armed)
     denies epoch == 0
   {
+    guard order.domain == domain;
     guard now <= order.deadline;
     guard rotation_armed == 0 || now > rotation_armed + 691200;
     proposed = new_officials;
@@ -35,10 +40,12 @@ contract QStampCouncil {
   }
   // Replaces the officials with the armed set once all five proposed officials confirm it, between 24 hours and 8 days after the rotation was armed.
   entry rotate(new_officials: GuardianSet<5>, order: RotateOrder, confirmations: Quorum<5 of 5, proposed>)
+    reads(domain)
     writes(officials, rotation_armed, epoch)
     after 24 hours from rotation_armed
     denies rotation_armed == 0
   {
+    guard order.domain == domain;
     guard now <= order.deadline;
     guard now <= rotation_armed + 691200;
     officials = new_officials;
@@ -47,11 +54,12 @@ contract QStampCouncil {
     emit Rotated(epoch);
   }
   entry cancel_rotation(order: CancelOrder, approvals: Quorum<2 of 5, officials>)
-    reads(epoch)
+    reads(epoch, domain)
     writes(rotation_armed)
     denies epoch == 0
     denies rotation_armed == 0
   {
+    guard order.domain == domain;
     guard now <= order.deadline;
     rotation_armed = 0;
     emit RotationCancelled(approvals.digest, epoch);
