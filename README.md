@@ -22,7 +22,7 @@ The templates produce evidence that supports record keeping obligations such as 
 
 2. `contracts/QStampIssuer.qs` is the institutional template. Only an authorised issuer may anchor a commitment. Authority comes from a signature by the issuer over the order, verified by the contract itself, and the contract accepts the order only in a transaction sent by the issuer, so a copied order cannot be submitted by another account. The contract records each anchored commitment in its state. The issuer may record the withdrawal of a commitment that the contract anchored earlier, with a reason code, and the contract keeps that withdrawal in its state. The owner is the deploying account and the first issuer is named at deployment. The owner may propose a new issuer when keys are rotated, and the change takes effect only when the proposed issuer accepts it. Ownership passes in the same two steps.
 
-3. `contracts/QStampCouncil.qs` is the multi party template. A commitment is anchored only when at least three of five officials approve it. To replace the officials, four of five approve a proposed set, which the contract records in full. After a waiting period of 24 hours and within the following seven days, all five proposed officials confirm the set and it takes effect. Any two of the current officials may cancel a pending replacement. The officials named at deployment take effect in the same way, once all five confirm them. This template suits public bodies where no single official may act alone.
+3. `contracts/QStampCouncil.qs` is the multi party template. The five officials named at deployment are active as soon as the contract is deployed. A commitment is anchored only when at least three of five officials approve it. To replace the officials, four of five approve a proposed set, which the contract records in full, and the replacement takes effect when all five proposed officials confirm that exact set. The two steps may follow each other at once, with no waiting period. Any two of the current officials may withdraw a pending proposal before it is confirmed. This template suits public bodies where no single official may act alone.
 
 ## Cryptographic properties
 
@@ -83,7 +83,7 @@ A stamp uses about 1.7 million units of meter and a withdrawal about 1.9 million
 
 2. Have the container signed by the Quantova attested compiler, which the web IDE does on compilation. The chain refuses any container without that signature.
 
-3. Deploy the signed container from the account that should become the owner, using the Quantova command line tool or the web IDE with the QMask wallet. For the issuer template, supply the address of the first issuer and a domain value as deployment parameters. A separate issuer key is recommended, so that the owner key can be kept offline. For the council template, supply the five official addresses and a domain value as deployment parameters. The domain value must be a fresh random 64 bit number other than zero for every deployment. A contract address depends only on the deploying account and its count of transactions, so after a relaunch of the network or on a fork a new deployment can receive the address of an earlier one, and only a fresh domain value ensures that orders and approvals signed for the earlier deployment are refused by the new one. Deploying the issuer template uses about 3.2 million units of meter and deploying the council template about 9.3 million. The council becomes active when all five officials confirm the set, no earlier than 24 hours and no later than eight days after deployment. A council that is not confirmed within that period must be deployed again.
+3. Deploy the signed container from the account that should become the owner, using the Quantova command line tool or the web IDE with the QMask wallet. For the issuer template, supply the address of the first issuer and a domain value as deployment parameters. A separate issuer key is recommended, so that the owner key can be kept offline. For the council template, supply the five official addresses and a domain value as deployment parameters. The domain value must be a fresh random 64 bit number other than zero for every deployment. A contract address depends only on the deploying account and its count of transactions, so after a relaunch of the network or on a fork a new deployment can receive the address of an earlier one, and only a fresh domain value ensures that orders and approvals signed for the earlier deployment are refused by the new one. Deploying the issuer template uses about 3.2 million units of meter and deploying the council template about 9.3 million. The five officials of the council are active as soon as the deployment is final. The contract refuses a list that names the same official twice, but it cannot check that each address belongs to a real account. The deployment tooling must therefore verify, before deploying, that every official is a registered account other than the zero address, because an official without a key can never approve and weakens every quorum.
 
 4. Record the contract address, publish it to the parties who will verify receipts, and keep it under change control.
 
@@ -133,7 +133,7 @@ A credit decision agent and an order execution agent were simulated. The credit 
 
 ### Report 3. Deployment and operation of the issuer and council templates
 
-The current templates were compiled through the attested Quanta compiler, checked against the audited container hashes and deployed with a fresh random deployment domain. The issuer template passed every live check, and the council template passed its deployment and early activation checks. The council stamp and quorum checks follow once its 24 hour activation delay has passed.
+The templates were compiled through the attested Quanta compiler, checked against the audited container hashes and deployed with a fresh random deployment domain. The issuer template passed every live check. The current council template has no waiting period. Its officials are active from deployment and a replacement takes effect as soon as it is confirmed. It passed every live check below, and the earlier version, which required a 24 hour activation, is listed for completeness.
 
 | Live check on the test network | Result |
 |---|---|
@@ -149,8 +149,16 @@ The current templates were compiled through the attested Quanta compiler, checke
 | Former issuer stamps after the change | refused |
 | Owner change by proposal and acceptance | pass |
 | Owner proposal by an account that is not the owner | refused |
-| Council deployment with five officials | pass |
-| Council activation before 24 hours | refused |
+| Council deployment with five officials, earlier version | pass |
+| Council activation before 24 hours, earlier version | refused |
+| Council deployment, officials active immediately with epoch 1 | pass |
+| Council stamp with three of five approvals right after deployment | pass |
+| SDK verification of the council stamp with `trustCustomContract` | valid |
+| Council stamp with only two approvals | refused |
+| Replacement proposed by four officials with no waiting period | pass |
+| Pending replacement withdrawn by two officials | pass |
+| Replacement proposed again and confirmed by all five proposed officials | pass |
+| New officials stamp immediately and the Approved event reports epoch 2 | pass |
 
 | Entry | Approximate meter |
 |---|---|
@@ -159,11 +167,12 @@ The current templates were compiled through the attested Quanta compiler, checke
 | Issuer revocation | 1901217 |
 | Issuer change proposal | 537161 |
 | Issuer or owner acceptance | 767756 |
-| Council stamp with three of five approvals | 1414617 |
-| Council replacement armed | 5572968 |
-| Council replacement confirmed | 6320975 |
+| Council stamp with three of five approvals | 1410287 |
+| Council replacement armed | 5568519 |
+| Council replacement confirmed | 6316521 |
+| Council replacement withdrawn | 1106404 |
 
-The issuer and council suites used 16.14 TQTOV in total, almost all of it for the two deployments.
+The issuer suite and the earlier council run used 16.14 TQTOV in total and the current council run used 13.56 TQTOV, almost all of it for the deployments and the quorum signature checks.
 
 ### Report 4. What a stored agent fingerprint looks like
 
@@ -229,7 +238,7 @@ A verifier recomputes the fingerprint of the record, the leaf with the salt, the
 
 | Review | Scope | Result |
 |---|---|---|
-| Contract review in the Quantova Virtual Machine | All three templates, original and current versions | 337 checks as expected, 0 unexpected |
+| Contract review in the Quantova Virtual Machine | All three templates, original and current versions | 470 checks as expected, 0 unexpected |
 | Live test network run | Issuer and council templates | all checks passed |
 | Deployed open contract | `QStamp.qs` source against the deployed container | identical byte for byte |
 | SDK review | Qstamp SDK 0.1.3 and its published package | no critical or high findings, all fixable findings resolved |
@@ -249,6 +258,8 @@ These reviews were carried out internally by Quantova Inc. An independent securi
 5. Receipts hold the fingerprint and salt of each record and should be handled with the same care as the records themselves.
 
 6. Test network deployments carry no evidential weight. Production deployments follow the Quantova main network.
+
+7. The council template applies no waiting period to a replacement of its officials. Four of the five current officials together with all five proposed officials can replace the set in two consecutive transactions, so the keys of the officials must be protected accordingly, and parties who rely on a council should watch for its `RotationArmed` event.
 
 ## Licence
 
