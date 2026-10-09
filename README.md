@@ -1,6 +1,24 @@
 # Qstamp Quanta Smart Contract Templates
 
-These are example Quanta smart contracts for post quantum time stamping on the Quantova chain. They form a baseline that governments, financial institutions and other third parties can adopt together with the Qstamp SDK.
+These are example Quanta smart contracts for private, post quantum time stamping on the Quantova chain. They form a baseline that governments, financial institutions and other third parties can adopt together with the Qstamp SDK.
+
+## What is published and what stays private
+
+These contracts prove records without disclosing them. No template receives, stores or emits any record content.
+
+The following stay on the systems of the organisation that deploys and uses a template, and never reach the chain.
+
+1. The records themselves, including prompts and instructions, agent inputs and outputs, reasoning, tool calls, documents, model files, personal data and payment details.
+2. The fingerprint of each record, its random salt and its receipt.
+
+The following are written to the chain, where anyone can read them.
+
+1. The 32 byte commitment of each batch, computed by the Qstamp SDK from the salted fingerprints of every record in the batch.
+2. The record kind, a number such as 6 for an AI agent action.
+3. The ordinary data of every transaction, namely the signing account, the contract, the block, the time and the fee.
+4. For the issuer template, the issuer account and any withdrawal with its reason code. For the council template, the positions of the approving officials and the number of the set of officials in which they served.
+
+A commitment cannot be reversed into any record, and the 256 bit salt of every record prevents anyone from confirming a guess about its content. A record is disclosed only when its holder chooses to produce it, for example to a court, a regulator or an auditor, together with its receipt.
 
 ## Status
 
@@ -34,7 +52,7 @@ Signed orders carry a nonce held by the contract, so an order that has been used
 
 ## How the Qstamp SDK works with these contracts
 
-The Qstamp SDK computes a fingerprint of each record, combines each fingerprint with a random salt, arranges the results in a hash tree following RFC 9162, and derives a single 32 byte commitment that binds the chain, the contract, the signer, the record kind, the batch size and the tree root. Only that commitment reaches the chain. Each record receives a receipt that any party can verify against the record and the chain.
+The Qstamp SDK computes a fingerprint of each record, combines each fingerprint with a random salt, arranges the results in a hash tree following RFC 9162, and derives a single 32 byte commitment that binds the chain, the contract, the signer, the record kind, the batch size and the tree root. Only that commitment reaches the chain, and the records, fingerprints, salts and receipts stay with the organisation. Each record receives a receipt that any party to whom the organisation discloses the record can verify against the record and the chain.
 
 1. With the open template, the SDK performs every step. Install it with `npm install @quantovainc/qstamp` and call `stamp` and `verify`, or use the `qstamp` command line tool.
 
@@ -257,7 +275,7 @@ These reviews were carried out internally by Quantova Inc. An independent securi
 
 5. Receipts hold the fingerprint and salt of each record and should be handled with the same care as the records themselves.
 
-6. Test network deployments carry no evidential weight. Production deployments follow the Quantova main network.
+6. Test network deployments carry no evidential weight. Production deployments will take place on the Quantova main network once it launches.
 
 7. The council template applies no waiting period to a replacement of its officials. Four of the five current officials together with all five proposed officials can replace the set in two consecutive transactions, so the keys of the officials must be protected accordingly, and parties who rely on a council should watch for its `RotationArmed` event.
 
