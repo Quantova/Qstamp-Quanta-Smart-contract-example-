@@ -36,11 +36,11 @@ The templates produce evidence that supports record keeping obligations such as 
 
 ## Templates
 
-1. `contracts/QStamp.qs` is the open template. Any account may anchor a 32 byte commitment and a record kind. The entry stamp_until also takes a deadline in seconds since 1970 and records the commitment only while the block time is at or before it, so a record that must be anchored before an expiry cannot be anchored later. The contract records the commitment together with the account that signed the transaction. It holds no state, no funds and no owner. This is the contract the Qstamp SDK uses by default, and the source in this repository compiles byte for byte to the contract deployed on the Quantova test network.
+1. `contracts/QStamp.qs` is the open template. Any account may anchor a 32 byte commitment and a record kind. The entry stamp_until also takes a deadline in seconds since 1970 and records the commitment only while the block time is at or before it, so a record that must be anchored before an expiry cannot be anchored later. The contract records the commitment together with the account that signed the transaction. It holds no state, no funds and no owner. This is the contract the Qstamp SDK uses by default. The Qstamp SDK repository pins the compiler commit, the build command and the expected hash of its container, so that anyone can rebuild it and compare the result with the deployed contract.
 
-2. `contracts/QStampIssuer.qs` is the institutional template. Only an authorised issuer may anchor a commitment. Authority comes from a signature by the issuer over the order, verified by the contract itself, and the contract accepts the order only in a transaction sent by the issuer, so a copied order cannot be submitted by another account. The contract records each anchored commitment in its state. The issuer may record the withdrawal of a commitment that the contract anchored earlier, with a reason code, and the contract keeps that withdrawal in its state. The owner is the deploying account and the first issuer is named at deployment. The owner may propose a new issuer when keys are rotated, and the change takes effect only when the proposed issuer accepts it. Ownership passes in the same two steps.
+2. `contracts/QStampIssuer.qs` is the institutional template. Only an authorised issuer may anchor a commitment. Authority comes from a signature by the issuer over the order, verified by the contract itself, and the contract accepts the order only in a transaction sent by the issuer, so a copied order cannot be submitted by another account. The contract records each anchored commitment in its state and emits the same 32 byte value in its Stamped event, so the commitment kept in state and the commitment that verifiers read from the event cannot differ. The issuer may record the withdrawal of a commitment that the contract anchored earlier, with a reason code, and the contract keeps that withdrawal in its state, where the Qstamp SDK reads it during verification so that a withdrawn record is never reported valid. The owner is the deploying account and the first issuer is named at deployment. The owner may propose a new issuer when keys are rotated, and the change takes effect only when the proposed issuer accepts it. Ownership passes in the same two steps.
 
-3. `contracts/QStampCouncil.qs` is the multi party template. The five officials named at deployment are active as soon as the contract is deployed. A commitment is anchored only when at least three of five officials approve it. To replace the officials, four of five approve a proposed set, which the contract records in full, and the replacement takes effect when all five proposed officials confirm that exact set. The two steps may follow each other at once, with no waiting period. Any two of the current officials may withdraw a pending proposal before it is confirmed. This template suits public bodies where no single official may act alone.
+3. `contracts/QStampCouncil.qs` is the multi party template. The five officials named at deployment are active as soon as the contract is deployed. A commitment is anchored only when at least three of five officials approve it. To replace the officials, four of five approve a proposed set, which the contract records in full, and the replacement takes effect when all five proposed officials and four of the five current officials confirm the set that is installed, in one transaction. The two steps may follow each other at once, with no waiting period. Any two of the current officials may withdraw a pending proposal before it is confirmed. This template suits public bodies where no single official may act alone.
 
 ## Cryptographic properties
 
@@ -56,7 +56,7 @@ The Qstamp SDK computes a fingerprint of each record, combines each fingerprint 
 
 1. With the open template, the SDK performs every step. Install it with `npm install @quantovainc/qstamp` and call `stamp` and `verify`, or use the `qstamp` command line tool.
 
-2. With the issuer template, the institution computes the commitment with the SDK and submits it from the issuer account as an order signed by the issuer through `@quantovainc/qcore`. The order carries the commitment twice, once as 32 bytes under which the contract records it and once as the two halves that appear in the recorded event, and both must be taken from the same commitment. The order also carries the domain value supplied when the contract was deployed, written as a decimal number. The fields must be listed in the order shown, which is the order in which the contract verifies the signature. The receipt is then verified with the SDK by naming the institution's contract and setting `trustCustomContract` to true. The following sequence follows the layout of the current template. The earlier layout was exercised on the Quantova test network.
+2. With the issuer template, the institution computes the commitment with the SDK and submits it from the issuer account as an order signed by the issuer through `@quantovainc/qcore`. The order carries the commitment once, as 32 bytes, and the contract both records and emits that value. The order also carries the domain value supplied when the contract was deployed, written as a decimal number, and the layout hash that the compiler emits for the entry, which binds the signature to the names, types and widths of its fields. The fields must be listed in the order shown, which is the order in which the contract verifies the signature. The receipt is then verified with the SDK by naming the institution's contract and setting `trustCustomContract` to true. Verification reads the withdrawal state of the contract and reports a withdrawn commitment as revoked. The following sequence follows the layout of the current template and needs a release of `@quantovainc/qcore` whose signed orders carry the layout hash. Earlier layouts were exercised on the Quantova test network.
 
 ```js
 const qstamp = require('@quantovainc/qstamp');
@@ -71,16 +71,14 @@ const anchored = qstamp.commitment(batch.root, 1, { genesis: net.genesis, contra
 const deadline = String(Math.floor(Date.now() / 1000) + 600);
 const domain = String(deploymentDomain);
 
-const half = (b) => ((BigInt('0x' + b.subarray(8, 16).toString('hex')) << 64n) | BigInt('0x' + b.subarray(0, 8).toString('hex'))).toString();
 await client.callSignedOrder(seed, issuerIndex, contract, '1effe529', {
-  schemeOff: 152, ptrOff: 160, regionOff: 224,
+  layoutHash: '8ec523f9556bc4a72e7bda0ed56f61a30c9ad466ec5e87f66550e6cdabb12d3f',
+  schemeOff: 152, ptrOff: 160, expiryOff: 192, expiry: deadline, regionOff: 200,
   fields: [
     { offset: 120, width: 32, value: anchored.toString('hex') },
     { offset: 168, width: 8, value: domain },
     { offset: 176, width: 8, value: deadline },
-    { offset: 184, width: 16, value: half(anchored.subarray(0, 16)) },
-    { offset: 200, width: 16, value: half(anchored.subarray(16, 32)) },
-    { offset: 216, width: 8, value: kind },
+    { offset: 184, width: 8, value: kind },
   ],
 }, seed, issuerIndex, 2000000, '1000000');
 
@@ -89,7 +87,7 @@ const result = await qstamp.verify(receipt, { bytes: record, contract, trustCust
 
 The receipt is assembled from the batch, the transaction identifier, the block height, the block identifier and the block time, in the format described in the Qstamp SDK documentation. The contract accepts the order only in a transaction sent by the issuer, so the signer of the transaction and the issuer recorded by the contract are always the same account, as SDK verification requires.
 
-A withdrawal is submitted in the same way with selector `5add7204`, scheme offset 152, pointer offset 160 and region offset 192. Its fields are the commitment at offset 120 with width 32, the domain at offset 168, the deadline at offset 176 and the reason at offset 184, in that order. The reason code must not be zero, and only a commitment that the contract anchored earlier and has not yet withdrawn can be withdrawn.
+A withdrawal is submitted in the same way with selector `5add7204`, layout hash `1f4793c36969025b369f0b7b2ed297bdf4e14129823f78e9164eb5d05d58f96d`, scheme offset 152, pointer offset 160, expiry offset 192 and region offset 200. Its fields are the commitment at offset 120 with width 32, the domain at offset 168, the deadline at offset 176 and the reason at offset 184, in that order. The reason code must not be zero, and only a commitment that the contract anchored earlier and has not yet withdrawn can be withdrawn.
 
 A stamp uses about 1.7 million units of meter and a withdrawal about 1.9 million, because each records the commitment in contract state. A meter limit of 2000000 for a stamp and 2200000 for a withdrawal leaves a margin, and a maximum fee of 1000000 Quon covers both at the current test network rate.
 
@@ -104,6 +102,18 @@ A stamp uses about 1.7 million units of meter and a withdrawal about 1.9 million
 3. Deploy the signed container from the account that should become the owner, using the Quantova command line tool or the web IDE with the QMask wallet. For the issuer template, supply the address of the first issuer and a domain value as deployment parameters. A separate issuer key is recommended, so that the owner key can be kept offline. For the council template, supply the five official addresses and a domain value as deployment parameters. The domain value must be a fresh random 64 bit number other than zero for every deployment. A contract address depends only on the deploying account and its count of transactions, so after a relaunch of the network or on a fork a new deployment can receive the address of an earlier one, and only a fresh domain value ensures that orders and approvals signed for the earlier deployment are refused by the new one. Deploying the issuer template uses about 3.2 million units of meter and deploying the council template about 9.3 million. The five officials of the council are active as soon as the deployment is final. The contract refuses a list that names the same official twice, but it cannot check that each address belongs to a real account. The deployment tooling must therefore verify, before deploying, that every official is a registered account other than the zero address, because an official without a key can never approve and weakens every quorum.
 
 4. Record the contract address, publish it to the parties who will verify receipts, and keep it under change control.
+
+5. The containers in this repository were compiled with the Quanta compiler at commit `ccdf4c2`, which lays out the arguments of each entry in their declared order, by running `quanta-cli check` and then `quanta-cli build` on each source file. Built without a provenance key, the canonical containers have the following SHA256 hashes, and an attested container is the canonical container followed by its provenance signature.
+
+| Template | Canonical container SHA256 |
+|---|---|
+| `QStamp.qs` | `2d83ce97a8178d6228c5b1ee5b3ae4a78fd2336718b38709dd2eefc571d1d01e` |
+| `QStampIssuer.qs` | `2b10a3efa0f444353bb811bd0ba1e75a09a297f7b36fbdd228ca0ab6c64e3b1c` |
+| `QStampCouncil.qs` | `1d14f71f03a23fd0af90e3a42dd210610c58d9014bd694a7be26a9adb09c8b14` |
+
+6. The issuer template now emits the whole commitment in its `Stamped` and `Revoked` events, with the selectors `14369772` and `303d6c2f`, and the council template requires four of the five current officials to approve the set installed by `rotate`. Contracts deployed from earlier versions of either template keep their earlier behaviour, and their operators must deploy the current version to obtain these protections.
+
+7. The offsets of every argument are those that `quanta-cli emit` reports for each entry, counted from the end of the four byte selector, whose first 120 bytes hold the host context. In the open template, stamp takes hi at offset 120, lo at 136 and kind at 152, and stamp_until takes hi at 120, lo at 136, kind at 152 and the deadline at 160. Containers of the open template built before compiler commit `ccdf4c2` placed the deadline of stamp_until first, at offset 120, with hi, lo and kind after it, so a deployment used with the current Qstamp SDK must be built from commit `ccdf4c2` or later. The offsets of the issuer and council templates are unchanged by that commit.
 
 ## Use with artificial intelligence systems
 
