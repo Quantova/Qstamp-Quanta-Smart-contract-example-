@@ -39,8 +39,8 @@ contract QStampCouncil {
     rotation_armed = now;
     emit RotationArmed(approvals.digest, epoch);
   }
-  // Replaces the officials with the proposed set once all five proposed officials confirm it.
-  entry rotate(new_officials: GuardianSet<5>, order: RotateOrder, confirmations: Quorum<5 of 5, proposed>)
+  // Replaces the officials with the set that all five proposed officials and four of the five current officials confirm.
+  entry rotate(new_officials: GuardianSet<5>, order: RotateOrder, confirmations: Quorum<5 of 5, proposed>, approvals: Quorum<4 of 5, officials>)
     reads(domain)
     writes(officials, rotation_armed, epoch)
     denies rotation_armed == 0
