@@ -1,0 +1,60 @@
+# Copyright 2026 Quantova Inc
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  QUANTA_REPO: https://github.com/Quantova/Quanta-Smart-Contract-language.git
+  QUANTA_COMMIT: 96e6a394cca3b2297e3ff11df292ad05dabd341c
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: "1.98.0"
+      - name: build the pinned compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/quanta"
+          git init -q "$src"
+          git -C "$src" fetch -q --depth 1 "$QUANTA_REPO" "$QUANTA_COMMIT"
+          git -C "$src" checkout -q FETCH_HEAD
+          cargo build --release --locked -p quanta-cli --manifest-path "$src/Cargo.toml" --target-dir "$RUNNER_TEMP/target"
+      - name: rebuild every container and compare it with the committed one
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli="$RUNNER_TEMP/target/release/quanta-cli"
+          work="$RUNNER_TEMP/build"
+          mkdir -p "$work"
+          for source in contracts/*.qs; do
+            name="$(basename "$source" .qs)"
+            cp "$source" "$work/$name.qs"
+            (cd "$work" && env -u QUANTA_PROVENANCE_KEY_FILE "$cli" check "$name.qs" > /dev/null)
+            (cd "$work" && env -u QUANTA_PROVENANCE_KEY_FILE "$cli" build "$name.qs" > /dev/null)
+            if ! cmp -s "$work/$name.qbc" "contracts/$name.qbc"; then
+              echo "::error::contracts/$name.qbc differs from the container rebuilt from contracts/$name.qs"
+              exit 1
+            fi
+            sha256sum "contracts/$name.qbc"
+          done
