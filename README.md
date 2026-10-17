@@ -36,7 +36,7 @@ The templates produce evidence that supports record keeping obligations such as 
 
 ## Templates
 
-1. `contracts/QStamp.qs` is the open template. Any account may anchor a 32 byte commitment and a record kind. The contract records the commitment together with the account that signed the transaction. It holds no state, no funds and no owner. This is the contract the Qstamp SDK uses by default, and the source in this repository compiles byte for byte to the contract deployed on the Quantova test network.
+1. `contracts/QStamp.qs` is the open template. Any account may anchor a 32 byte commitment and a record kind. The entry stamp_until also takes a deadline in seconds since 1970 and records the commitment only while the block time is at or before it, so a record that must be anchored before an expiry cannot be anchored later. The contract records the commitment together with the account that signed the transaction. It holds no state, no funds and no owner. This is the contract the Qstamp SDK uses by default, and the source in this repository compiles byte for byte to the contract deployed on the Quantova test network.
 
 2. `contracts/QStampIssuer.qs` is the institutional template. Only an authorised issuer may anchor a commitment. Authority comes from a signature by the issuer over the order, verified by the contract itself, and the contract accepts the order only in a transaction sent by the issuer, so a copied order cannot be submitted by another account. The contract records each anchored commitment in its state. The issuer may record the withdrawal of a commitment that the contract anchored earlier, with a reason code, and the contract keeps that withdrawal in its state. The owner is the deploying account and the first issuer is named at deployment. The owner may propose a new issuer when keys are rotated, and the change takes effect only when the proposed issuer accepts it. Ownership passes in the same two steps.
 
@@ -271,7 +271,7 @@ These reviews were carried out internally by Quantova Inc. An independent securi
 
 3. Block time is set by the proposing validator in whole seconds and is accepted only when it is no more than 15 seconds ahead of the clocks of the other validators and not earlier than the previous block.
 
-4. In this release the SDK confirms chain facts through an RPC endpoint. Verifiers should use the official endpoint or several independently operated endpoints until receipts carry finality certificates for fully offline verification.
+4. In this release the SDK confirms chain facts through RPC endpoints and accepts them only when at least two endpoints run by different operators agree, unless the caller explicitly chooses to rely on one. Receipts will carry finality certificates for fully offline verification in a later release.
 
 5. Receipts hold the fingerprint and salt of each record and should be handled with the same care as the records themselves.
 
