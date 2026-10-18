@@ -264,17 +264,6 @@ The event recorded on chain by `QStamp.qs` in block 2030475. Its data is the 32 
 
 A verifier recomputes the fingerprint of the record, the leaf with the salt, the root with the eight path hashes and the commitment with the chain, contract, sender, kind and batch size, and confirms that the commitment equals the one in the event. Any change to the record, the receipt or the event makes the result invalid.
 
-### Report 5. Security review
-
-| Review | Scope | Result |
-|---|---|---|
-| Contract review in the Quantova Virtual Machine | All three templates, original and current versions | 470 checks as expected, 0 unexpected |
-| Live test network run | Issuer and council templates | all checks passed |
-| Deployed open contract | `QStamp.qs` source against the deployed container | identical byte for byte |
-| SDK review | Qstamp SDK 0.1.3 and its published package | no critical or high findings, all fixable findings resolved |
-
-These reviews were carried out internally by Quantova Inc. An independent security audit by a qualified third party is required before any template is used in production.
-
 ## Security considerations
 
 1. A transaction that calls a template without the required authority is still included in a block and still pays its fee, but the contract records nothing. A verifier must therefore require the recorded event and must never treat a final transaction alone as proof of a stamp. The Qstamp SDK applies this rule.
