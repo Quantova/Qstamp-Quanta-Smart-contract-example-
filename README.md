@@ -70,6 +70,7 @@ const kind = String(qstamp.KINDS.public_record);
 const anchored = qstamp.commitment(batch.root, 1, { genesis: net.genesis, contract, sender: issuer, kind });
 const deadline = String(Math.floor(Date.now() / 1000) + 600);
 const domain = String(deploymentDomain);
+if (savedSession) client.restoreSession(savedSession);
 
 await client.callSignedOrder(seed, issuerIndex, contract, '1effe529', {
   layoutHash: '8ec523f9556bc4a72e7bda0ed56f61a30c9ad466ec5e87f66550e6cdabb12d3f',
@@ -80,12 +81,13 @@ await client.callSignedOrder(seed, issuerIndex, contract, '1effe529', {
     { offset: 176, width: 8, value: deadline },
     { offset: 184, width: 8, value: kind },
   ],
-}, seed, issuerIndex, 2000000, '1000000');
+}, seed, issuerIndex, 2000000, '1000000', savedSession ? undefined : expectedOrderNonce);
+savedSession = client.saveSession();
 
 const result = await qstamp.verify(receipt, { bytes: record, contract, trustCustomContract: true });
 ```
 
-The receipt is assembled from the batch, the transaction identifier, the block height, the block identifier and the block time, in the format described in the Qstamp SDK documentation. The contract accepts the order only in a transaction sent by the issuer, so the signer of the transaction and the issuer recorded by the contract are always the same account, as SDK verification requires.
+A new client does not take an order nonce above zero from the gateway alone, so the institution either restores the session it saved after its previous order with `restoreSession`, or passes the order nonce it expects the contract to hold as `expectedOrderNonce`. The session returned by `saveSession` must be kept after every order, because it holds the nonces already signed. The receipt is assembled from the batch, the transaction identifier, the block height, the block identifier and the block time, in the format described in the Qstamp SDK documentation. The contract accepts the order only in a transaction sent by the issuer, so the signer of the transaction and the issuer recorded by the contract are always the same account, as SDK verification requires.
 
 A withdrawal is submitted in the same way with selector `5add7204`, layout hash `1f4793c36969025b369f0b7b2ed297bdf4e14129823f78e9164eb5d05d58f96d`, scheme offset 152, pointer offset 160, expiry offset 192 and region offset 200. Its fields are the commitment at offset 120 with width 32, the domain at offset 168, the deadline at offset 176 and the reason at offset 184, in that order. The reason code must not be zero, and only a commitment that the contract anchored earlier and has not yet withdrawn can be withdrawn.
 
@@ -99,7 +101,7 @@ A stamp uses about 1.7 million units of meter and a withdrawal about 1.9 million
 
 2. Have the container signed by the Quantova attested compiler, which the web IDE does on compilation. The chain refuses any container without that signature.
 
-3. Deploy the signed container from the account that should become the owner, using the Quantova command line tool or the web IDE with the QMask wallet. For the issuer template, supply the address of the first issuer and a domain value as deployment parameters. A separate issuer key is recommended, so that the owner key can be kept offline. For the council template, supply the five official addresses and a domain value as deployment parameters. The domain value must be a fresh random 64 bit number other than zero for every deployment. A contract address depends only on the deploying account and its count of transactions, so after a relaunch of the network or on a fork a new deployment can receive the address of an earlier one, and only a fresh domain value ensures that orders and approvals signed for the earlier deployment are refused by the new one. Deploying the issuer template uses about 3.2 million units of meter and deploying the council template about 9.3 million. The five officials of the council are active as soon as the deployment is final. The contract refuses a list that names the same official twice, but it cannot check that each address belongs to a real account. The deployment tooling must therefore verify, before deploying, that every official is a registered account other than the zero address, because an official without a key can never approve and weakens every quorum.
+3. Deploy the signed container from the account that should become the owner, using the Quantova command line tool or the web IDE with the QMask wallet. For the issuer template, supply the address of the first issuer and a domain value as deployment parameters. A separate issuer key is recommended, so that the owner key can be kept offline. For the council template, supply the five official addresses and a domain value as deployment parameters. The domain value must be a fresh random 64 bit number other than zero for every deployment. Draw it with `qstamp domain` from the Qstamp SDK, or `deploymentDomain()` in code, and never choose it by hand or use it again. Record it together with the contract address and the genesis hash of the network, for example with `qstamp domain --record domains.json --contract <address> --genesis <genesis hash> --domain <value>`, which refuses a domain the ledger already holds for the same contract address. A contract address depends only on the deploying account and its count of transactions, so after a relaunch of the network or on a fork a new deployment can receive the address of an earlier one, and only a fresh domain value ensures that orders and approvals signed for the earlier deployment are refused by the new one. Deploying the issuer template uses about 3.2 million units of meter and deploying the council template about 9.3 million. The five officials of the council are active as soon as the deployment is final. The contract refuses a list that names the same official twice, but it cannot check that each address belongs to a real account. The deployment tooling must therefore verify, before deploying, that every official is a registered account other than the zero address, because an official without a key can never approve and weakens every quorum.
 
 4. Record the contract address, publish it to the parties who will verify receipts, and keep it under change control.
 
@@ -131,7 +133,7 @@ A business that offers automated systems to clients can deploy the issuer templa
 
 ## Benchmark reports
 
-The following reports were produced on the Quantova test network `Q-test-net-1` with Qstamp SDK release 0.1.3 and qcore 0.4.2. Every figure was measured on the live network. Test network receipts carry no evidential weight and the figures are given so that institutions can assess the design before an independent audit.
+The following reports were produced on the Quantova test network before its relaunch as `Q-test-net-01`, with Qstamp SDK release 0.1.3 and qcore 0.4.2. Every figure was measured on the live network and is given so that institutions can assess the design.
 
 ### Report 1. Batch stamping through the open contract
 
@@ -165,7 +167,7 @@ The templates were compiled through the attested Quanta compiler, checked agains
 
 | Live check on the test network | Result |
 |---|---|
-| Compiled container matches the audited container | pass |
+| Compiled container matches the published container | pass |
 | Issuer stamp sent by the issuer records the Stamped event | pass |
 | SDK verification of the issuer stamp with `trustCustomContract` | valid |
 | Signed order copied and sent by another account | refused |
@@ -212,7 +214,7 @@ The agent action, held by the operator.
 {"agent":"superintelligence-agent-0","decision":"execute","input_digest":"275e435ad3576f85435bf41336a402a539482abaec358740eccc72b796e94d93","model":"agent-model 4.0.0","operator":"Benchmark Operator","output_digest":"52d523238d70c57bc90212705860004a9c0358ffbaea2ea328295405ee34c826","seq":128,"time":"2026-10-09T10:42:54.447Z","tool":"payments.approve"}
 ```
 
-The receipt, held by the operator next to the record.
+The receipt, held by the operator next to the record. It was made on the network before its relaunch as Q-test-net-01 and is shown exactly as issued, with the chain name and genesis hash of that network.
 
 ```json
 {
@@ -285,7 +287,7 @@ These reviews were carried out internally by Quantova Inc. An independent securi
 
 5. Receipts hold the fingerprint and salt of each record and should be handled with the same care as the records themselves.
 
-6. Test network deployments carry no evidential weight. Production deployments will take place on the Quantova main network once it launches.
+6. Receipts are verified the same way on every Quantova network. Institutions are expected to deploy for production on the Quantova main network once it launches.
 
 7. The council template applies no waiting period to a replacement of its officials. Four of the five current officials together with all five proposed officials can replace the set in three consecutive transactions, so the keys of the officials must be protected accordingly, and parties who rely on a council should watch for its `RotationArmed` and `RotationConfirmed` events.
 
