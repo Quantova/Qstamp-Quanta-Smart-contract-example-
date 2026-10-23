@@ -74,12 +74,12 @@ if (savedSession) client.restoreSession(savedSession);
 
 await client.callSignedOrder(seed, issuerIndex, contract, '1effe529', {
   layoutHash: '8ec523f9556bc4a72e7bda0ed56f61a30c9ad466ec5e87f66550e6cdabb12d3f',
-  schemeOff: 152, ptrOff: 160, expiryOff: 192, expiry: deadline, regionOff: 200,
+  schemeOff: 184, ptrOff: 192, expiryOff: 224, expiry: deadline, regionOff: 232,
   fields: [
-    { offset: 120, width: 32, value: anchored.toString('hex') },
-    { offset: 168, width: 8, value: domain },
-    { offset: 176, width: 8, value: deadline },
-    { offset: 184, width: 8, value: kind },
+    { offset: 152, width: 32, value: anchored.toString('hex') },
+    { offset: 200, width: 8, value: domain },
+    { offset: 208, width: 8, value: deadline },
+    { offset: 216, width: 8, value: kind },
   ],
 }, seed, issuerIndex, 2000000, '1000000', savedSession ? undefined : expectedOrderNonce);
 savedSession = client.saveSession();
@@ -89,7 +89,7 @@ const result = await qstamp.verify(receipt, { bytes: record, contract, trustCust
 
 A new client does not take an order nonce above zero from the gateway alone, so the institution either restores the session it saved after its previous order with `restoreSession`, or passes the order nonce it expects the contract to hold as `expectedOrderNonce`. The session returned by `saveSession` must be kept after every order, because it holds the nonces already signed. The receipt is assembled from the batch, the transaction identifier, the block height, the block identifier and the block time, in the format described in the Qstamp SDK documentation. The contract accepts the order only in a transaction sent by the issuer, so the signer of the transaction and the issuer recorded by the contract are always the same account, as SDK verification requires.
 
-A withdrawal is submitted in the same way with selector `5add7204`, layout hash `1f4793c36969025b369f0b7b2ed297bdf4e14129823f78e9164eb5d05d58f96d`, scheme offset 152, pointer offset 160, expiry offset 192 and region offset 200. Its fields are the commitment at offset 120 with width 32, the domain at offset 168, the deadline at offset 176 and the reason at offset 184, in that order. The reason code must not be zero, and only a commitment that the contract anchored earlier and has not yet withdrawn can be withdrawn.
+A withdrawal is submitted in the same way with selector `5add7204`, layout hash `1f4793c36969025b369f0b7b2ed297bdf4e14129823f78e9164eb5d05d58f96d`, scheme offset 184, pointer offset 192, expiry offset 224 and region offset 232. Its fields are the commitment at offset 152 with width 32, the domain at offset 200, the deadline at offset 208 and the reason at offset 216, in that order. The reason code must not be zero, and only a commitment that the contract anchored earlier and has not yet withdrawn can be withdrawn.
 
 A stamp uses about 1.7 million units of meter and a withdrawal about 1.9 million, because each records the commitment in contract state. A meter limit of 2000000 for a stamp and 2200000 for a withdrawal leaves a margin, and a maximum fee of 1000000 Quon covers both at the current test network rate.
 
