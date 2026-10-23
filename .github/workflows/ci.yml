@@ -18,7 +18,7 @@ concurrency:
 
 env:
   QUANTA_REPO: https://github.com/Quantova/Quanta-Smart-Contract-language.git
-  QUANTA_COMMIT: fee72331441e73f7f604e4ddfbbd3d25aec1622b
+  QUANTA_COMMIT: f80c037422770af5548f524fd1b3b2ee21e1efc4
 
 jobs:
   contracts:
